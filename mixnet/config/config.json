@@ -1,0 +1,17 @@
+{
+  "messages_per_round": 2,
+  "round_timeout_ms": 5000,
+  "padded_payload_size": 1024,
+  "final_mix": "server3",
+
+  "mix_servers": [
+    { "id": "server1", "address": "server1:9001", "public_key_file": "keys/server1.pub" },
+    { "id": "server2", "address": "server2:9002", "public_key_file": "keys/server2.pub" },
+    { "id": "server3", "address": "server3:9003", "public_key_file": "keys/server3.pub" }
+  ],
+
+  "clients": [
+    { "id": "client1", "address": "client1:9101", "public_key_file": "keys/client1.pub" },
+    { "id": "client2", "address": "client2:9102", "public_key_file": "keys/client2.pub" }
+  ]
+}

@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package mixnet;
+
+option go_package = "mixnet/proto;mixnetpb";
+
+// MixServer is the RPC surface exposed by every mix server. Clients call
+// ForwardMessage on the first mix in their path; mix servers call
+// ForwardMessage on the next mix to relay a peeled layer; recipients call
+// PollMessages on the final mix to retrieve blobs delivered to them.
+//
+// The API:
+//   * forward_message(payload, round)  -> ForwardMessage
+//   * poll_messages()                  -> PollMessages
+// Health is an auxiliary RPC used by the container healthcheck.
+service MixServer {
+  // ForwardMessage submits one onion-encrypted, round-tagged packet to a mix.
+  // The mix checks for replays, peels exactly one layer, and buffers the
+  // result for the given round; when the round's batch is complete it is
+  // shuffled and dispatched. The reply reports whether the packet was accepted
+  // (a replayed or undecryptable packet is rejected).
+  rpc ForwardMessage(ForwardRequest) returns (ForwardReply);
+
+  // PollMessages is called by a recipient against the final mix to retrieve
+  // any blobs delivered to it. The returned ciphertexts are still encrypted to
+  // the recipient's key; the recipient decrypts them locally.
+  rpc PollMessages(PollRequest) returns (PollReply);
+
+  // Health reports liveness/readiness for the container healthcheck.
+  rpc Health(HealthRequest) returns (HealthReply);
+}
+
+// ForwardRequest carries one wire packet and the round it belongs to. The
+// payload is padded to a constant length, so its size never depends on the
+// plaintext.
+message ForwardRequest {
+  bytes payload = 1; // the outermost (for this hop) onion layer
+  uint64 round = 2;  // round number bound into every AEAD layer
+}
+
+message ForwardReply {
+  bool accepted = 1;  // false if dropped (replay / undecryptable / round closed)
+  string detail = 2;  // human-readable reason
+}
+
+message PollRequest {
+  string recipient_id = 1; // identifier the recipient is known by to the exit mix
+}
+
+message PollReply {
+  repeated DeliveredMessage messages = 1;
+}
+
+// DeliveredMessage is one blob waiting for a recipient. ciphertext is the
+// recipient-sealed innermost layer; the recipient opens it with its private
+// key to recover the padded plaintext.
+message DeliveredMessage {
+  bytes ciphertext = 1;
+  uint64 round = 2;
+}
+
+message HealthRequest {}
+
+message HealthReply {
+  bool serving = 1;
+  string id = 2; // the responding mix's id
+}

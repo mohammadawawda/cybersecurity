@@ -1,0 +1,89 @@
+# docker-compose for the mixnet.
+#
+#   - One shared image; each service selects its role at runtime.
+#   - Servers run as mixes via ROLE=mix + SERVER_ID; server3 is the exit mix.
+#   - Clients override the command to send-and-poll.
+#   - config/ (read-only), tls/ (read-only) and output/ (read-write) are mounted.
+#   - Healthchecks call the binary's own `healthcheck` subcommand, which dials
+#     the server's TLS port and issues a Health RPC.
+#   - All services share an isolated user-defined bridge network.
+
+name: mixnet
+
+x-mix-common: &mix-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: mixnet:latest
+  volumes:
+    - ./config:/app/config:ro
+    - ./tls:/app/tls:ro
+    - ./output:/app/output
+  networks:
+    - mix
+
+services:
+  server1:
+    <<: *mix-common
+    environment:
+      ROLE: mix
+      SERVER_ID: server1
+    healthcheck:
+      test: ["CMD", "/app/mixnet", "healthcheck", "--id", "server1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  server2:
+    <<: *mix-common
+    environment:
+      ROLE: mix
+      SERVER_ID: server2
+    healthcheck:
+      test: ["CMD", "/app/mixnet", "healthcheck", "--id", "server2"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # server3 is the final (exit) mix: it delivers to recipients and writes each
+  # round's output to /app/output for inspection and testing.
+  server3:
+    <<: *mix-common
+    environment:
+      ROLE: mix
+      SERVER_ID: server3
+      FINAL_MIX: "true"
+    healthcheck:
+      test: ["CMD", "/app/mixnet", "healthcheck", "--id", "server3"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  client1:
+    <<: *mix-common
+    environment:
+      ROLE: client
+      CLIENT_ID: client1
+    depends_on:
+      server1: { condition: service_healthy }
+      server2: { condition: service_healthy }
+      server3: { condition: service_healthy }
+    command: ["/app/mixnet", "client", "--id", "client1", "--recipient", "client2", "--path", "server1,server2,server3"]
+
+  client2:
+    <<: *mix-common
+    environment:
+      ROLE: client
+      CLIENT_ID: client2
+    depends_on:
+      server1: { condition: service_healthy }
+      server2: { condition: service_healthy }
+      server3: { condition: service_healthy }
+    command: ["/app/mixnet", "client", "--id", "client2", "--recipient", "client1", "--path", "server1,server2,server3"]
+
+networks:
+  mix:
+    driver: bridge
